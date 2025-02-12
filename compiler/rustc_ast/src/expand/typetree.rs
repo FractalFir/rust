@@ -45,15 +45,14 @@ impl TypeTree {
         Self(vec![Type { offset: -1, size: 1, kind: Kind::Integer, child: TypeTree::new() }])
     }
     pub fn int(size: usize) -> Self {
-        let mut ints = Vec::with_capacity(size);
-        for i in 0..size {
-            ints.push(Type {
+        let ints = (0..size)
+            .map(|i| Type {
                 offset: i as isize,
                 size: 1,
                 kind: Kind::Integer,
                 child: TypeTree::new(),
-            });
-        }
+            })
+            .collect();
         Self(ints)
     }
 }

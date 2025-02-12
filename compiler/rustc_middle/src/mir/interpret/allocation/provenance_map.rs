@@ -279,18 +279,16 @@ impl<Prov: Provenance> ProvenanceMap<Prov> {
             }
             debug_assert!(self.bytes.is_none());
         } else {
-            let mut bytes = Vec::new();
             // First, if there is a part of a pointer at the start, add that.
-            if let Some(entry) = begin_overlap {
+            let mut bytes = if let Some(entry) = begin_overlap {
                 trace!("start overlapping entry: {entry:?}");
                 // For really small copies, make sure we don't run off the end of the `src` range.
                 let entry_end = cmp::min(entry.0 + ptr_size, src.end());
-                for offset in src.start..entry_end {
-                    bytes.push((offset, entry.1));
-                }
+                (src.start..entry_end).map(|offset| (offset, entry.1)).collect()
             } else {
                 trace!("no start overlapping entry");
-            }
+                Vec::new()
+            };
             // Then the main part, bytewise provenance from `self.bytes`.
             if let Some(all_bytes) = self.bytes.as_ref() {
                 bytes.extend(all_bytes.range(src.start..src.end()));

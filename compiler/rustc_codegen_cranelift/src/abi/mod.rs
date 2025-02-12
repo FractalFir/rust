@@ -278,13 +278,15 @@ pub(crate) fn codegen_fn_prelude<'tcx>(fx: &mut FunctionCx<'_, '_, 'tcx>, start_
                     _ => bug!("spread argument isn't a tuple?! but {:?}", arg_ty),
                 };
 
-                let mut params = Vec::new();
-                for (i, _arg_ty) in tupled_arg_tys.iter().enumerate() {
-                    let arg_abi = arg_abis_iter.next().unwrap();
-                    let param =
+                let params = tupled_arg_tys
+                    .iter()
+                    .enumerate()
+                    .map(|(i, _arg_ty)| {
+                        let arg_abi = arg_abis_iter.next().unwrap();
+
                         cvalue_for_param(fx, Some(local), Some(i), arg_abi, &mut block_params_iter);
-                    params.push(param);
-                }
+                    })
+                    .collect();
 
                 (local, ArgKind::Spread(params), arg_ty)
             } else {

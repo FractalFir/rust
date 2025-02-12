@@ -51,13 +51,11 @@ fn destructure_const<'tcx>(
                 (FIRST_VARIANT, branches)
             };
             let fields = &def.variant(variant_idx).fields;
-            let mut field_consts = Vec::with_capacity(fields.len());
-
-            for (field, field_valtree) in iter::zip(fields, branches) {
-                let field_ty = field.ty(tcx, args);
-                let field_const = ty::Const::new_value(tcx, *field_valtree, field_ty);
-                field_consts.push(field_const);
-            }
+            let field_consts = iter::zip(fields, branches)
+                .map(|(field, field_valtree)| {
+                    ty::Const::new_value(tcx, *field_valtree, field.ty(tcx, args))
+                })
+                .collect::<Vec<_>>();
             debug!(?field_consts);
 
             (field_consts, Some(variant_idx))

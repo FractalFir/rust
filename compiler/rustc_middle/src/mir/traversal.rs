@@ -266,11 +266,8 @@ pub fn mono_reachable_reverse_postorder<'a, 'tcx>(
     tcx: TyCtxt<'tcx>,
     instance: Instance<'tcx>,
 ) -> Vec<BasicBlock> {
-    let mut iter = Postorder::new(&body.basic_blocks, START_BLOCK, (tcx, instance));
-    let mut items = Vec::with_capacity(body.basic_blocks.len());
-    while let Some(block) = iter.next() {
-        items.push(block);
-    }
+    let mut items =
+        Postorder::new(&body.basic_blocks, START_BLOCK, (tcx, instance)).collect::<Vec<_>>();
     items.reverse();
     items
 }
