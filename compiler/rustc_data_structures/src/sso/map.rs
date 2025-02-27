@@ -232,6 +232,7 @@ impl<K: Eq + Hash, V> SsoHashMap<K, V> {
     /// value is returned. The key is not updated, though; this matters for
     /// types that can be `==` without being identical. See the [module-level
     /// documentation] for more.
+    #[track_caller]
     pub fn insert(&mut self, key: K, value: V) -> Option<V> {
         match self {
             SsoHashMap::Array(array) => {

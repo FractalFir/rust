@@ -55,7 +55,7 @@ where
         self.map.borrow_mut().clear();
         self.undo_log.clear();
     }
-
+    #[track_caller]
     pub fn insert(&mut self, key: K, value: V) -> bool {
         match self.map.borrow_mut().insert(key.clone(), value) {
             None => {

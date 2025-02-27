@@ -616,7 +616,7 @@ impl<'a, V> LocalTableInContextMut<'a, V> {
         validate_hir_id_for_typeck_results(self.hir_owner, id);
         self.data.entry(id.local_id)
     }
-
+    #[track_caller]
     pub fn insert(&mut self, id: HirId, val: V) -> Option<V> {
         validate_hir_id_for_typeck_results(self.hir_owner, id);
         self.data.insert(id.local_id, val)
