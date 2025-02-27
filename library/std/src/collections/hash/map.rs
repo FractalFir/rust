@@ -1186,7 +1186,11 @@ where
     #[stable(feature = "rust1", since = "1.0.0")]
     #[rustc_confusables("push", "append", "put")]
     #[cfg_attr(not(test), rustc_diagnostic_item = "hashmap_insert")]
+    #[track_caller]
     pub fn insert(&mut self, k: K, v: V) -> Option<V> {
+        if self.capacity() == self.len() && crate::env::var("PRINT_RESIZE").is_ok(){
+            eprintln!("Resizing insert from {:?}", core::panic::Location::caller());
+        }
         self.base.insert(k, v)
     }
 

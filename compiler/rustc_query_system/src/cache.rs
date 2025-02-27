@@ -19,7 +19,8 @@ impl<Key: Clone, Value: Clone> Clone for Cache<Key, Value> {
 
 impl<Key, Value> Default for Cache<Key, Value> {
     fn default() -> Self {
-        Self { hashmap: Default::default() }
+        // Query count is usually quite big, and *tends* to exceed 1024
+        Self { hashmap: Lock::new(FxHashMap::with_capacity_and_hasher(1024,Default::default())) }
     }
 }
 

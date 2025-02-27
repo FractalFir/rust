@@ -462,6 +462,7 @@ impl<K: Eq + Hash, V> UnordMap<K, V> {
     }
 
     #[inline]
+    #[track_caller]
     pub fn insert(&mut self, k: K, v: V) -> Option<V> {
         self.inner.insert(k, v)
     }
