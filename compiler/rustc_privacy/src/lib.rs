@@ -22,6 +22,7 @@ use errors::{
 };
 use rustc_ast::MacroDef;
 use rustc_ast::visit::{VisitorResult, try_visit};
+use rustc_attr_parsing::AttributeKind;
 use rustc_data_structures::fx::FxHashSet;
 use rustc_data_structures::intern::Interned;
 use rustc_errors::{MultiSpan, listify};
@@ -493,7 +494,11 @@ impl<'tcx> EmbargoVisitor<'tcx> {
         // Non-opaque macros cannot make other items more accessible than they already are.
         let hir_id = self.tcx.local_def_id_to_hir_id(local_def_id);
         let attrs = self.tcx.hir().attrs(hir_id);
-        if attr::find_transparency(attrs, md.macro_rules).0 != Transparency::Opaque {
+
+        if attr::find_attr!(attrs, AttributeKind::MacroTransparency(x) => *x)
+            .unwrap_or(Transparency::fallback(md.macro_rules))
+            != Transparency::Opaque
+        {
             return;
         }
 
@@ -645,7 +650,7 @@ impl<'tcx> Visitor<'tcx> for EmbargoVisitor<'tcx> {
             // The interface is empty, and no nested items.
             hir::ItemKind::Use(..)
             | hir::ItemKind::ExternCrate(..)
-            | hir::ItemKind::GlobalAsm(..) => {}
+            | hir::ItemKind::GlobalAsm { .. } => {}
             // The interface is empty, and all nested items are processed by `visit_item`.
             hir::ItemKind::Mod(..) => {}
             hir::ItemKind::Macro(macro_def, _) => {

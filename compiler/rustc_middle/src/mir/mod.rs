@@ -12,7 +12,6 @@ use either::Either;
 use polonius_engine::Atom;
 use rustc_abi::{FieldIdx, VariantIdx};
 pub use rustc_ast::Mutability;
-use rustc_data_structures::captures::Captures;
 use rustc_data_structures::fx::{FxHashMap, FxHashSet};
 use rustc_data_structures::graph::dominators::Dominators;
 use rustc_errors::{DiagArgName, DiagArgValue, DiagMessage, ErrorGuaranteed, IntoDiagArg};
@@ -30,7 +29,6 @@ use rustc_span::{DUMMY_SP, Span, Symbol};
 use tracing::{debug, trace};
 
 pub use self::query::*;
-use self::visit::TyContext;
 use crate::mir::interpret::{AllocRange, Scalar};
 use crate::ty::codec::{TyDecoder, TyEncoder};
 use crate::ty::print::{FmtPrinter, Printer, pretty_print_const, with_no_trimmed_paths};
@@ -98,24 +96,28 @@ impl<'tcx> HasLocalDecls<'tcx> for Body<'tcx> {
 }
 
 impl MirPhase {
-    /// Gets the index of the current MirPhase within the set of all `MirPhase`s.
-    ///
-    /// FIXME(JakobDegen): Return a `(usize, usize)` instead.
-    pub fn phase_index(&self) -> usize {
-        const BUILT_PHASE_COUNT: usize = 1;
-        const ANALYSIS_PHASE_COUNT: usize = 2;
-        match self {
-            MirPhase::Built => 1,
-            MirPhase::Analysis(analysis_phase) => {
-                1 + BUILT_PHASE_COUNT + (*analysis_phase as usize)
-            }
-            MirPhase::Runtime(runtime_phase) => {
-                1 + BUILT_PHASE_COUNT + ANALYSIS_PHASE_COUNT + (*runtime_phase as usize)
-            }
+    pub fn name(&self) -> &'static str {
+        match *self {
+            MirPhase::Built => "built",
+            MirPhase::Analysis(AnalysisPhase::Initial) => "analysis",
+            MirPhase::Analysis(AnalysisPhase::PostCleanup) => "analysis-post-cleanup",
+            MirPhase::Runtime(RuntimePhase::Initial) => "runtime",
+            MirPhase::Runtime(RuntimePhase::PostCleanup) => "runtime-post-cleanup",
+            MirPhase::Runtime(RuntimePhase::Optimized) => "runtime-optimized",
         }
     }
 
-    /// Parses an `MirPhase` from a pair of strings. Panics if this isn't possible for any reason.
+    /// Gets the (dialect, phase) index of the current `MirPhase`. Both numbers
+    /// are 1-indexed.
+    pub fn index(&self) -> (usize, usize) {
+        match *self {
+            MirPhase::Built => (1, 1),
+            MirPhase::Analysis(analysis_phase) => (2, 1 + analysis_phase as usize),
+            MirPhase::Runtime(runtime_phase) => (3, 1 + runtime_phase as usize),
+        }
+    }
+
+    /// Parses a `MirPhase` from a pair of strings. Panics if this isn't possible for any reason.
     pub fn parse(dialect: String, phase: Option<String>) -> Self {
         match &*dialect.to_ascii_lowercase() {
             "built" => {
@@ -480,7 +482,7 @@ impl<'tcx> Body<'tcx> {
 
     /// Returns an iterator over all user-declared mutable locals.
     #[inline]
-    pub fn mut_vars_iter<'a>(&'a self) -> impl Iterator<Item = Local> + Captures<'tcx> + 'a {
+    pub fn mut_vars_iter(&self) -> impl Iterator<Item = Local> {
         (self.arg_count + 1..self.local_decls.len()).filter_map(move |index| {
             let local = Local::new(index);
             let decl = &self.local_decls[local];
@@ -490,9 +492,7 @@ impl<'tcx> Body<'tcx> {
 
     /// Returns an iterator over all user-declared mutable arguments and locals.
     #[inline]
-    pub fn mut_vars_and_args_iter<'a>(
-        &'a self,
-    ) -> impl Iterator<Item = Local> + Captures<'tcx> + 'a {
+    pub fn mut_vars_and_args_iter(&self) -> impl Iterator<Item = Local> {
         (1..self.local_decls.len()).filter_map(move |index| {
             let local = Local::new(index);
             let decl = &self.local_decls[local];
@@ -522,7 +522,7 @@ impl<'tcx> Body<'tcx> {
     }
 
     #[inline]
-    pub fn drain_vars_and_temps<'a>(&'a mut self) -> impl Iterator<Item = LocalDecl<'tcx>> + 'a {
+    pub fn drain_vars_and_temps(&mut self) -> impl Iterator<Item = LocalDecl<'tcx>> {
         self.local_decls.drain(self.arg_count + 1..)
     }
 
@@ -536,17 +536,6 @@ impl<'tcx> Body<'tcx> {
         } else {
             assert_eq!(idx, stmts.len());
             &block.terminator().source_info
-        }
-    }
-
-    pub fn span_for_ty_context(&self, ty_context: TyContext) -> Span {
-        match ty_context {
-            TyContext::UserTy(span) => span,
-            TyContext::ReturnTy(source_info)
-            | TyContext::LocalDecl { source_info, .. }
-            | TyContext::YieldTy(source_info)
-            | TyContext::ResumeTy(source_info) => source_info.span,
-            TyContext::Location(loc) => self.source_info(loc).span,
         }
     }
 
@@ -791,7 +780,7 @@ impl<T> ClearCrossCrate<T> {
         }
     }
 
-    pub fn assert_crate_local(self) -> T {
+    pub fn unwrap_crate_local(self) -> T {
         match self {
             ClearCrossCrate::Clear => bug!("unwrapping cross-crate data"),
             ClearCrossCrate::Set(v) => v,
@@ -948,7 +937,7 @@ mod binding_form_impl {
 /// involved in borrow_check errors, e.g., explanations of where the
 /// temporaries come from, when their destructors are run, and/or how
 /// one might revise the code to satisfy the borrow checker's rules.
-#[derive(Clone, Debug, TyEncodable, TyDecodable, HashStable)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, TyEncodable, TyDecodable, HashStable)]
 pub struct BlockTailInfo {
     /// If `true`, then the value resulting from evaluating this tail
     /// expression is ignored by the block's expression context.
@@ -972,7 +961,6 @@ pub struct LocalDecl<'tcx> {
     /// Temporaries and the return place are always mutable.
     pub mutability: Mutability,
 
-    // FIXME(matthewjasper) Don't store in this in `Body`
     pub local_info: ClearCrossCrate<Box<LocalInfo<'tcx>>>,
 
     /// The type of this local.
@@ -982,7 +970,6 @@ pub struct LocalDecl<'tcx> {
     /// e.g., via `let x: T`, then we carry that type here. The MIR
     /// borrow checker needs this information since it can affect
     /// region inference.
-    // FIXME(matthewjasper) Don't store in this in `Body`
     pub user_ty: Option<Box<UserTypeProjections>>,
 
     /// The *syntactic* (i.e., not visibility) source scope the local is defined
@@ -1090,7 +1077,6 @@ pub enum LocalInfo<'tcx> {
     AggregateTemp,
     /// A temporary created for evaluation of some subexpression of some block's tail expression
     /// (with no intervening statement context).
-    // FIXME(matthewjasper) Don't store in this in `Body`
     BlockTailTemp(BlockTailInfo),
     /// A temporary created during evaluating `if` predicate, possibly for pattern matching for `let`s,
     /// and subject to Edition 2024 temporary lifetime rules
@@ -1105,7 +1091,7 @@ pub enum LocalInfo<'tcx> {
 
 impl<'tcx> LocalDecl<'tcx> {
     pub fn local_info(&self) -> &LocalInfo<'tcx> {
-        self.local_info.as_ref().assert_crate_local()
+        self.local_info.as_ref().unwrap_crate_local()
     }
 
     /// Returns `true` only if local is a binding that can itself be

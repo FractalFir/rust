@@ -9,7 +9,7 @@ use std::path::PathBuf;
 
 use hir::Expr;
 use rustc_ast::ast::Mutability;
-use rustc_attr_parsing::parse_confusables;
+use rustc_attr_parsing::{AttributeKind, find_attr};
 use rustc_data_structures::fx::{FxIndexMap, FxIndexSet};
 use rustc_data_structures::sorted_map::SortedMap;
 use rustc_data_structures::unord::UnordSet;
@@ -905,11 +905,13 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         } else if self.impl_into_iterator_should_be_iterator(rcvr_ty, span, unsatisfied_predicates)
         {
             err.span_label(span, format!("`{rcvr_ty}` is not an iterator"));
-            err.multipart_suggestion_verbose(
-                "call `.into_iter()` first",
-                vec![(span.shrink_to_lo(), format!("into_iter()."))],
-                Applicability::MaybeIncorrect,
-            );
+            if !span.in_external_macro(self.tcx.sess.source_map()) {
+                err.multipart_suggestion_verbose(
+                    "call `.into_iter()` first",
+                    vec![(span.shrink_to_lo(), format!("into_iter()."))],
+                    Applicability::MaybeIncorrect,
+                );
+            }
             return err.emit();
         } else if !unsatisfied_predicates.is_empty() && matches!(rcvr_ty.kind(), ty::Param(_)) {
             // We special case the situation where we are looking for `_` in
@@ -1586,10 +1588,8 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                 if let SelfSource::QPath(ty) = source
                     && let hir::Node::Expr(ref path_expr) = self.tcx.parent_hir_node(ty.hir_id)
                     && let hir::ExprKind::Path(_) = path_expr.kind
-                    && let hir::Node::Stmt(hir::Stmt {
-                        kind: hir::StmtKind::Semi(ref parent), ..
-                    })
-                    | hir::Node::Expr(ref parent) = self.tcx.parent_hir_node(path_expr.hir_id)
+                    && let hir::Node::Stmt(&hir::Stmt { kind: hir::StmtKind::Semi(parent), .. })
+                    | hir::Node::Expr(parent) = self.tcx.parent_hir_node(path_expr.hir_id)
                 {
                     let replacement_span =
                         if let hir::ExprKind::Call(..) | hir::ExprKind::Struct(..) = parent.kind {
@@ -1884,9 +1884,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                 for inherent_method in
                     self.tcx.associated_items(inherent_impl_did).in_definition_order()
                 {
-                    if let Some(attr) =
-                        self.tcx.get_attr(inherent_method.def_id, sym::rustc_confusables)
-                        && let Some(candidates) = parse_confusables(attr)
+                    if let Some(candidates) = find_attr!(self.tcx.get_all_attrs(inherent_method.def_id), AttributeKind::Confusables{symbols, ..} => symbols)
                         && candidates.contains(&item_name.name)
                         && let ty::AssocKind::Fn = inherent_method.kind
                     {
@@ -2390,7 +2388,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         long_ty_path: &mut Option<PathBuf>,
     ) -> Result<(), ErrorGuaranteed> {
         if let SelfSource::MethodCall(expr) = source {
-            for (_, parent) in tcx.hir().parent_iter(expr.hir_id).take(5) {
+            for (_, parent) in tcx.hir_parent_iter(expr.hir_id).take(5) {
                 if let Node::Expr(parent_expr) = parent {
                     let lang_item = match parent_expr.kind {
                         ExprKind::Struct(qpath, _, _) => match *qpath {
@@ -3149,8 +3147,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
 
         let mut derives_grouped = Vec::<(String, Span, String)>::new();
         for (self_name, self_span, trait_name) in derives.into_iter() {
-            if let Some((last_self_name, _, ref mut last_trait_names)) = derives_grouped.last_mut()
-            {
+            if let Some((last_self_name, _, last_trait_names)) = derives_grouped.last_mut() {
                 if last_self_name == &self_name {
                     last_trait_names.push_str(format!(", {trait_name}").as_str());
                     continue;

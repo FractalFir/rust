@@ -324,7 +324,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         let PatInfo { binding_mode, max_ref_mutbl, top_info: ti, current_depth, .. } = pat_info;
 
         let path_res = match pat.kind {
-            PatKind::Expr(PatExpr { kind: PatExprKind::Path(ref qpath), hir_id, span }) => {
+            PatKind::Expr(PatExpr { kind: PatExprKind::Path(qpath), hir_id, span }) => {
                 Some(self.resolve_ty_and_res_fully_qualified_call(qpath, *hir_id, *span))
             }
             _ => None,
@@ -344,7 +344,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             PatKind::Wild | PatKind::Err(_) => expected,
             // We allow any type here; we ensure that the type is uninhabited during match checking.
             PatKind::Never => expected,
-            PatKind::Expr(PatExpr { kind: PatExprKind::Path(ref qpath), hir_id, span }) => {
+            PatKind::Expr(PatExpr { kind: PatExprKind::Path(qpath), hir_id, span }) => {
                 let ty = self.check_pat_path(
                     *hir_id,
                     pat.hir_id,
@@ -946,7 +946,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             let var_ty = self.resolve_vars_if_possible(var_ty);
             let msg = format!("first introduced with type `{var_ty}` here");
             err.span_label(hir.span(var_id), msg);
-            let in_match = hir.parent_iter(var_id).any(|(_, n)| {
+            let in_match = self.tcx.hir_parent_iter(var_id).any(|(_, n)| {
                 matches!(
                     n,
                     hir::Node::Expr(hir::Expr {
@@ -2771,16 +2771,13 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
     ) -> ErrorGuaranteed {
         let PatInfo { top_info: ti, current_depth, .. } = pat_info;
 
-        let mut err = struct_span_code_err!(
-            self.dcx(),
-            span,
-            E0529,
-            "expected an array or slice, found `{expected_ty}`"
-        );
+        let mut slice_pat_semantics = false;
+        let mut as_deref = None;
+        let mut slicing = None;
         if let ty::Ref(_, ty, _) = expected_ty.kind()
             && let ty::Array(..) | ty::Slice(..) = ty.kind()
         {
-            err.help("the semantics of slice patterns changed recently; see issue #62254");
+            slice_pat_semantics = true;
         } else if self
             .autoderef(span, expected_ty)
             .silence_errors()
@@ -2797,28 +2794,23 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                         || self.tcx.is_diagnostic_item(sym::Result, adt_def.did()) =>
                 {
                     // Slicing won't work here, but `.as_deref()` might (issue #91328).
-                    err.span_suggestion_verbose(
-                        span.shrink_to_hi(),
-                        "consider using `as_deref` here",
-                        ".as_deref()",
-                        Applicability::MaybeIncorrect,
-                    );
+                    as_deref = Some(errors::AsDerefSuggestion { span: span.shrink_to_hi() });
                 }
                 _ => (),
             }
 
             let is_top_level = current_depth <= 1;
             if is_slice_or_array_or_vector && is_top_level {
-                err.span_suggestion_verbose(
-                    span.shrink_to_hi(),
-                    "consider slicing here",
-                    "[..]",
-                    Applicability::MachineApplicable,
-                );
+                slicing = Some(errors::SlicingSuggestion { span: span.shrink_to_hi() });
             }
         }
-        err.span_label(span, format!("pattern cannot match with input type `{expected_ty}`"));
-        err.emit()
+        self.dcx().emit_err(errors::ExpectedArrayOrSlice {
+            span,
+            ty: expected_ty,
+            slice_pat_semantics,
+            as_deref,
+            slicing,
+        })
     }
 
     fn is_slice_or_array_or_vector(&self, ty: Ty<'tcx>) -> (bool, Ty<'tcx>) {

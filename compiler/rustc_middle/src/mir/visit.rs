@@ -443,7 +443,7 @@ macro_rules! make_mir_visitor {
                             location
                         )
                     }
-                    StatementKind::Intrinsic(box ref $($mutability)? intrinsic) => {
+                    StatementKind::Intrinsic(box intrinsic) => {
                         match intrinsic {
                             NonDivergingIntrinsic::Assume(op) => self.visit_operand(op, location),
                             NonDivergingIntrinsic::CopyNonOverlapping(CopyNonOverlapping {
@@ -886,8 +886,8 @@ macro_rules! make_mir_visitor {
                 self.visit_source_info(source_info);
                 let location = Location::START;
                 if let Some(box VarDebugInfoFragment {
-                    ref $($mutability)? ty,
-                    ref $($mutability)? projection
+                    ty,
+                    projection
                 }) = composite {
                     self.visit_ty($(& $mutability)? *ty, TyContext::Location(location));
                     for elem in projection {
@@ -1364,13 +1364,13 @@ impl PlaceContext {
         matches!(self, PlaceContext::MutatingUse(MutatingUseContext::Drop))
     }
 
-    /// Returns `true` if this place context represents a borrow.
+    /// Returns `true` if this place context represents a borrow, excluding fake borrows
+    /// (which are an artifact of borrowck and not actually borrows in runtime MIR).
     pub fn is_borrow(self) -> bool {
         matches!(
             self,
-            PlaceContext::NonMutatingUse(
-                NonMutatingUseContext::SharedBorrow | NonMutatingUseContext::FakeBorrow
-            ) | PlaceContext::MutatingUse(MutatingUseContext::Borrow)
+            PlaceContext::NonMutatingUse(NonMutatingUseContext::SharedBorrow)
+                | PlaceContext::MutatingUse(MutatingUseContext::Borrow)
         )
     }
 

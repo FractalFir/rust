@@ -44,6 +44,7 @@
 #![feature(ip)]
 #![feature(ip_from)]
 #![feature(is_ascii_octdigit)]
+#![feature(isolate_most_least_significant_one)]
 #![feature(iter_advance_by)]
 #![feature(iter_array_chunks)]
 #![feature(iter_chain)]
@@ -63,7 +64,6 @@
 #![feature(maybe_uninit_write_slice)]
 #![feature(min_specialization)]
 #![feature(never_type)]
-#![feature(num_midpoint_signed)]
 #![feature(numfmt)]
 #![feature(pattern)]
 #![feature(pointer_is_aligned_to)]
@@ -87,7 +87,6 @@
 #![feature(try_blocks)]
 #![feature(try_find)]
 #![feature(try_trait_v2)]
-#![feature(unsigned_is_multiple_of)]
 #![feature(unsize)]
 #![feature(unsized_tuple_coercion)]
 #![feature(unwrap_infallible)]
@@ -154,10 +153,7 @@ mod intrinsics;
 mod io;
 mod iter;
 mod lazy;
-#[cfg(not(bootstrap))]
 mod macros;
-#[cfg(bootstrap)]
-mod macros_bootstrap;
 mod manually_drop;
 mod mem;
 mod net;

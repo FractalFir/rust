@@ -315,8 +315,8 @@ impl<'tcx> fmt::Display for LayoutError<'tcx> {
 }
 
 impl<'tcx> IntoDiagArg for LayoutError<'tcx> {
-    fn into_diag_arg(self) -> DiagArgValue {
-        self.to_string().into_diag_arg()
+    fn into_diag_arg(self, _: &mut Option<std::path::PathBuf>) -> DiagArgValue {
+        self.to_string().into_diag_arg(&mut None)
     }
 }
 
@@ -794,8 +794,9 @@ where
                         Some(fields) => FieldsShape::Union(fields),
                         None => FieldsShape::Arbitrary { offsets: IndexVec::new(), memory_index: IndexVec::new() },
                     },
-                    backend_repr: BackendRepr::Uninhabited,
+                    backend_repr: BackendRepr::Memory { sized: true },
                     largest_niche: None,
+                    uninhabited: true,
                     align: tcx.data_layout.i8_align,
                     size: Size::ZERO,
                     max_repr_align: None,

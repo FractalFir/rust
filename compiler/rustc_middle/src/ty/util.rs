@@ -208,6 +208,20 @@ impl<'tcx> TyCtxt<'tcx> {
         tcx.struct_tail_raw(ty, |ty| tcx.normalize_erasing_regions(typing_env, ty), || {})
     }
 
+    /// Returns true if a type has metadata.
+    pub fn type_has_metadata(self, ty: Ty<'tcx>, typing_env: ty::TypingEnv<'tcx>) -> bool {
+        if ty.is_sized(self, typing_env) {
+            return false;
+        }
+
+        let tail = self.struct_tail_for_codegen(ty, typing_env);
+        match tail.kind() {
+            ty::Foreign(..) => false,
+            ty::Str | ty::Slice(..) | ty::Dynamic(..) => true,
+            _ => bug!("unexpected unsized tail: {:?}", tail),
+        }
+    }
+
     /// Returns the deeply last field of nested structures, or the same type if
     /// not a structure at all. Corresponds to the only possible unsized field,
     /// and its type can be used to determine unsizing strategy.
@@ -1755,13 +1769,12 @@ pub fn intrinsic_raw(tcx: TyCtxt<'_>, def_id: LocalDefId) -> Option<ty::Intrinsi
         && (matches!(tcx.fn_sig(def_id).skip_binder().abi(), ExternAbi::RustIntrinsic)
             || tcx.has_attr(def_id, sym::rustc_intrinsic))
     {
-        let must_be_overridden = tcx.has_attr(def_id, sym::rustc_intrinsic_must_be_overridden)
-            || match tcx.hir_node_by_def_id(def_id) {
-                hir::Node::Item(hir::Item { kind: hir::ItemKind::Fn { has_body, .. }, .. }) => {
-                    !has_body
-                }
-                _ => true,
-            };
+        let must_be_overridden = match tcx.hir_node_by_def_id(def_id) {
+            hir::Node::Item(hir::Item { kind: hir::ItemKind::Fn { has_body, .. }, .. }) => {
+                !has_body
+            }
+            _ => true,
+        };
         Some(ty::IntrinsicDef {
             name: tcx.item_name(def_id.into()),
             must_be_overridden,
