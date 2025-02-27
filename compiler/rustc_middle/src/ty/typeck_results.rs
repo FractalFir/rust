@@ -219,7 +219,7 @@ impl<'tcx> TypeckResults<'tcx> {
             field_indices: Default::default(),
             user_provided_types: Default::default(),
             user_provided_sigs: Default::default(),
-            node_types: Default::default(),
+            node_types: ItemLocalMap::with_capacity(128),
             node_args: Default::default(),
             adjustments: Default::default(),
             pat_binding_modes: Default::default(),
