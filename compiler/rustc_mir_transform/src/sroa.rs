@@ -1,4 +1,4 @@
-use rustc_abi::{FIRST_VARIANT, FieldIdx};
+use rustc_abi::{FieldIdx, VariantIdx};
 use rustc_data_structures::flat_map_in_place::FlatMapInPlace;
 use rustc_hir::LangItem;
 use rustc_index::IndexVec;
@@ -11,9 +11,110 @@ use rustc_mir_dataflow::value_analysis::{excluded_locals, iter_fields};
 use tracing::{debug, instrument};
 
 use crate::patch::MirPatch;
+use crate::ty::data_structures::HashMap;
 
 pub(super) struct ScalarReplacementOfAggregates;
+#[derive(Debug)]
+struct EscapeVisitor {
+    pub escaping: DenseBitSet<Local>,
+    // Would swapping this for a IndexVec<Option<VariantIdx>> be better?
+    pub variants: HashMap<Local, VariantIdx>,
+}
+impl<'tcx> Visitor<'tcx> for EscapeVisitor {
+    fn visit_local(&mut self, local: Local, _: PlaceContext, _: Location) {
+        self.escaping.insert(local);
+    }
+    #[track_caller]
+    fn visit_place(&mut self, place: &Place<'tcx>, context: PlaceContext, location: Location) {
+        if let &[PlaceElem::Downcast(_, variant_index), ..] = &place.projection[..] {
+            // If this local was previously dowcast to another variant, then this local is not
+            // eligible for SROA.
+            if self
+                .variants
+                .insert(place.local, variant_index)
+                .is_some_and(|old_idx| old_idx != variant_index)
+            {
+                eprintln!(
+                    "Not apllying SRoA for {:?} because it is read as a different variant!",
+                    place.local
+                );
+                self.escaping.insert(place.local);
+            }
+            eprintln!("{:?}", &place.projection[..]);
+            return;
+        }
+        // Mirror the implementation in PreFlattenVisitor.
+        if let &[PlaceElem::Field(..), ..] = &place.projection[..] {
+            return;
+        }
 
+        self.super_place(place, context, location);
+    }
+
+    fn visit_assign(&mut self, lvalue: &Place<'tcx>, rvalue: &Rvalue<'tcx>, location: Location) {
+        if lvalue.as_local().is_some() {
+            match rvalue {
+                // Handling the discirminant's of enums in SRoA is tricky, so it Discriminant is simply not supported yet.
+                Rvalue::Discriminant(place) if let Some(local) = place.as_local() => {
+                    self.escaping.insert(local);
+                }
+                // Aggregate assignments are expanded in run_pass.
+                Rvalue::Aggregate(kind, _) => {
+                    if let AggregateKind::Adt(_, variant_index, ..) = &**kind {
+                        if self
+                            .variants
+                            .insert(lvalue.local, *variant_index)
+                            .is_some_and(|old_idx| old_idx != *variant_index)
+                        {
+                            eprintln!(
+                                "Not apllying SRoA for {:?} because it is initialized to a different variant!",
+                                lvalue.local
+                            );
+                            self.escaping.insert(lvalue.local);
+                        }
+                    };
+                    self.visit_rvalue(rvalue, location);
+                    return;
+                }
+                Rvalue::Use(..) => {
+                    self.visit_rvalue(rvalue, location);
+                    return;
+                }
+                _ => {}
+            }
+        }
+        self.super_assign(lvalue, rvalue, location)
+    }
+
+    fn visit_statement(&mut self, statement: &Statement<'tcx>, location: Location) {
+        match &statement.kind {
+            // Storage statements are expanded in run_pass.
+            StatementKind::SetDiscriminant { place, variant_index }
+                if let Some(local) = place.as_local() =>
+            {
+                if self
+                    .variants
+                    .insert(local, *variant_index)
+                    .is_some_and(|old_idx| old_idx != *variant_index)
+                {
+                    eprintln!(
+                        "Not apllying SRoA for {:?} because it's discriminant is set to a different variant!",
+                        local
+                    );
+                    self.escaping.insert(local);
+                }
+            }
+            StatementKind::StorageLive(..)
+            | StatementKind::StorageDead(..)
+            | StatementKind::Deinit(..) => return,
+            _ => self.super_statement(statement, location),
+        }
+    }
+
+    // We ignore anything that happens in debuginfo, since we expand it using
+    // `VarDebugInfoFragment`.
+    fn visit_var_debug_info(&mut self, _: &VarDebugInfo<'tcx>) {}
+}
 impl<'tcx> crate::MirPass<'tcx> for ScalarReplacementOfAggregates {
     fn is_enabled(&self, sess: &rustc_session::Session) -> bool {
         sess.mir_opt_level() >= 2
@@ -22,7 +123,7 @@ impl<'tcx> crate::MirPass<'tcx> for ScalarReplacementOfAggregates {
     #[instrument(level = "debug", skip(self, tcx, body))]
     fn run_pass(&self, tcx: TyCtxt<'tcx>, body: &mut Body<'tcx>) {
         debug!(def_id = ?body.source.def_id());
-
+        eprintln!("old:{body:?}");
         // Avoid query cycles (coroutines require optimized MIR for layout).
         if tcx.type_of(body.source.def_id()).instantiate_identity().is_coroutine() {
             return;
@@ -33,10 +134,12 @@ impl<'tcx> crate::MirPass<'tcx> for ScalarReplacementOfAggregates {
         loop {
             debug!(?excluded);
             let escaping = escaping_locals(tcx, typing_env, &excluded, body);
-            debug!(?escaping);
+            eprintln!("{:?} {:?}", body.source, escaping);
             let replacements = compute_flattening(tcx, typing_env, body, escaping);
+            eprintln!("replacements:{replacements:?}");
             debug!(?replacements);
             let all_dead_locals = replace_flattened_locals(tcx, body, replacements);
+
             if !all_dead_locals.is_empty() {
                 excluded.union(&all_dead_locals);
                 excluded = {
@@ -48,6 +151,7 @@ impl<'tcx> crate::MirPass<'tcx> for ScalarReplacementOfAggregates {
                 break;
             }
         }
+        eprintln!("new:{body:?}");
     }
 
     fn is_required(&self) -> bool {
@@ -57,9 +161,10 @@ impl<'tcx> crate::MirPass<'tcx> for ScalarReplacementOfAggregates {
 
 /// Identify all locals that are not eligible for SROA.
 ///
-/// There are 3 cases:
+/// There are 4 cases:
 /// - the aggregated local is used or passed to other code (function parameters and arguments);
-/// - the locals is a union or an enum;
+/// - the locals is a union;
+/// - the local is an enum, and more than one of its variants is accessed;
 /// - the local's address is taken, and thus the relative addresses of the fields are observable to
 ///   client code.
 fn escaping_locals<'tcx>(
@@ -67,9 +172,9 @@ fn escaping_locals<'tcx>(
     typing_env: ty::TypingEnv<'tcx>,
     excluded: &DenseBitSet<Local>,
     body: &Body<'tcx>,
-) -> DenseBitSet<Local> {
+) -> EscapeVisitor {
     let is_excluded_ty = |ty: Ty<'tcx>| {
-        if ty.is_union() || ty.is_enum() {
+        if ty.is_union() {
             return true;
         }
         if let ty::Adt(def, _args) = ty.kind() {
@@ -82,12 +187,15 @@ fn escaping_locals<'tcx>(
                 // not the inner reference-to-opaque-type.
                 return true;
             }
-            // We already excluded unions and enums, so this ADT must have one variant
-            let variant = def.variant(FIRST_VARIANT);
-            if variant.fields.len() > 1 {
-                // If this has more than one field, it cannot be a wrapper that only provides a
-                // niche, so we do not want to automatically exclude it.
+            if ty.is_enum() {
                 return false;
+            }
+            for variant in def.variants() {
+                if variant.fields.len() > 1 {
+                    // If this has more than one field, it cannot be a wrapper that only provides a
+                    // niche, so we do not want to automatically exclude it.
+                    return false;
+                }
             }
             let Ok(layout) = tcx.layout_of(typing_env.as_query_input(ty)) else {
                 // We can't get the layout
@@ -102,67 +210,18 @@ fn escaping_locals<'tcx>(
         false
     };
 
-    let mut set = DenseBitSet::new_empty(body.local_decls.len());
-    set.insert_range(RETURN_PLACE..=Local::from_usize(body.arg_count));
+    let mut escaping = DenseBitSet::new_empty(body.local_decls.len());
+    escaping.insert_range(RETURN_PLACE..=Local::from_usize(body.arg_count));
     for (local, decl) in body.local_decls().iter_enumerated() {
         if excluded.contains(local) || is_excluded_ty(decl.ty) {
-            set.insert(local);
+            eprintln!("{local:?} {decl:?} ");
+            escaping.insert(local);
         }
     }
-    let mut visitor = EscapeVisitor { set };
+    eprintln!("init set:{escaping:?}");
+    let mut visitor = EscapeVisitor { escaping, variants: Default::default() };
     visitor.visit_body(body);
-    return visitor.set;
-
-    struct EscapeVisitor {
-        set: DenseBitSet<Local>,
-    }
-
-    impl<'tcx> Visitor<'tcx> for EscapeVisitor {
-        fn visit_local(&mut self, local: Local, _: PlaceContext, _: Location) {
-            self.set.insert(local);
-        }
-
-        fn visit_place(&mut self, place: &Place<'tcx>, context: PlaceContext, location: Location) {
-            // Mirror the implementation in PreFlattenVisitor.
-            if let &[PlaceElem::Field(..), ..] = &place.projection[..] {
-                return;
-            }
-            self.super_place(place, context, location);
-        }
-
-        fn visit_assign(
-            &mut self,
-            lvalue: &Place<'tcx>,
-            rvalue: &Rvalue<'tcx>,
-            location: Location,
-        ) {
-            if lvalue.as_local().is_some() {
-                match rvalue {
-                    // Aggregate assignments are expanded in run_pass.
-                    Rvalue::Aggregate(..) | Rvalue::Use(..) => {
-                        self.visit_rvalue(rvalue, location);
-                        return;
-                    }
-                    _ => {}
-                }
-            }
-            self.super_assign(lvalue, rvalue, location)
-        }
-
-        fn visit_statement(&mut self, statement: &Statement<'tcx>, location: Location) {
-            match statement.kind {
-                // Storage statements are expanded in run_pass.
-                StatementKind::StorageLive(..)
-                | StatementKind::StorageDead(..)
-                | StatementKind::Deinit(..) => return,
-                _ => self.super_statement(statement, location),
-            }
-        }
-
-        // We ignore anything that happens in debuginfo, since we expand it using
-        // `VarDebugInfoFragment`.
-        fn visit_var_debug_info(&mut self, _: &VarDebugInfo<'tcx>) {}
-    }
+    return visitor;
 }
 
 #[derive(Default, Debug)]
@@ -170,12 +229,21 @@ struct ReplacementMap<'tcx> {
     /// Pre-computed list of all "new" locals for each "old" local. This is used to expand storage
     /// and deinit statement and debuginfo.
     fragments: IndexVec<Local, Option<IndexVec<FieldIdx, Option<(Ty<'tcx>, Local)>>>>,
+    variants: HashMap<Local, VariantIdx>,
 }
 
 impl<'tcx> ReplacementMap<'tcx> {
     fn replace_place(&self, tcx: TyCtxt<'tcx>, place: PlaceRef<'tcx>) -> Option<Place<'tcx>> {
         let &[PlaceElem::Field(f, _), ref rest @ ..] = place.projection else {
-            return None;
+            let &[PlaceElem::Downcast(_, variant), PlaceElem::Field(f, _), ref rest @ ..] =
+                place.projection
+            else {
+                return None;
+            };
+            let fields = self.fragments[place.local].as_ref()?;
+            assert_eq!(variant, *self.variants.get(&place.local)?);
+            let (_, new_local) = fields[f]?;
+            return Some(Place { local: new_local, projection: tcx.mk_place_elems(rest) });
         };
         let fields = self.fragments[place.local].as_ref()?;
         let (_, new_local) = fields[f]?;
@@ -187,6 +255,7 @@ impl<'tcx> ReplacementMap<'tcx> {
         place: Place<'tcx>,
     ) -> Option<impl Iterator<Item = (FieldIdx, Ty<'tcx>, Local)>> {
         let local = place.as_local()?;
+        eprintln!("local:{local:?}");
         let fields = self.fragments[local].as_ref()?;
         Some(fields.iter_enumerated().filter_map(|(field, &opt_ty_local)| {
             let (ty, local) = opt_ty_local?;
@@ -203,27 +272,27 @@ fn compute_flattening<'tcx>(
     tcx: TyCtxt<'tcx>,
     typing_env: ty::TypingEnv<'tcx>,
     body: &mut Body<'tcx>,
-    escaping: DenseBitSet<Local>,
+    escaping: EscapeVisitor,
 ) -> ReplacementMap<'tcx> {
     let mut fragments = IndexVec::from_elem(None, &body.local_decls);
 
     for local in body.local_decls.indices() {
-        if escaping.contains(local) {
+        if escaping.escaping.contains(local) {
             continue;
         }
         let decl = body.local_decls[local].clone();
         let ty = decl.ty;
         iter_fields(ty, tcx, typing_env, |variant, field, field_ty| {
             if variant.is_some() {
-                // Downcasts are currently not supported.
-                return;
+                // variants are currently not supported.
+                //return;
             };
             let new_local =
                 body.local_decls.push(LocalDecl { ty: field_ty, user_ty: None, ..decl.clone() });
             fragments.get_or_insert_with(local, IndexVec::new).insert(field, (field_ty, new_local));
         });
     }
-    ReplacementMap { fragments }
+    ReplacementMap { fragments, variants: escaping.variants }
 }
 
 /// Perform the replacement computed by `compute_flattening`.
@@ -305,6 +374,7 @@ impl<'tcx> ReplacementVisitor<'tcx, '_> {
                     composite.projection.push(PlaceElem::Field(field, field_ty));
 
                     var_debug_info.value = VarDebugInfoContents::Place(replacement_local.into());
+                    eprintln!("dg_ty:{ty:?} var_debug_info:{var_debug_info:?}");
                     var_debug_info
                 })
                 .collect()
@@ -400,8 +470,16 @@ impl<'tcx, 'll> MutVisitor<'tcx> for ReplacementVisitor<'tcx, 'll> {
                 if let Some(final_locals) = self.replacements.place_fragments(place) {
                     // Put the deaggregated statements *after* the original one.
                     let location = location.successor_within_block();
+                    let adt_ty = place.ty(self.local_decls, self.tcx);
                     for (field, ty, new_local) in final_locals {
-                        let rplace = self.tcx.mk_place_field(place, field, ty);
+                        let rplace = if adt_ty.ty.is_enum() {
+                            let variant = self.replacements.variants.get(&place.local).unwrap();
+                            let adt = adt_ty.ty.ty_adt_def().unwrap();
+                            let downcast = self.tcx.mk_place_downcast(place, adt, *variant);
+                            self.tcx.mk_place_field(downcast, field, ty)
+                        } else {
+                            self.tcx.mk_place_field(place, field, ty)
+                        };
                         let rvalue = Rvalue::Use(Operand::Move(rplace));
                         self.patch.add_statement(
                             location,
@@ -426,9 +504,17 @@ impl<'tcx, 'll> MutVisitor<'tcx> for ReplacementVisitor<'tcx, 'll> {
                     Operand::Move(rplace) => (rplace, false),
                     Operand::Constant(_) => bug!(),
                 };
+                let adt_ty = op.ty(self.local_decls, self.tcx);
                 if let Some(final_locals) = self.replacements.place_fragments(lhs) {
                     for (field, ty, new_local) in final_locals {
-                        let rplace = self.tcx.mk_place_field(rplace, field, ty);
+                        let rplace = if adt_ty.is_enum() {
+                            let variant = self.replacements.variants.get(&rplace.local).unwrap();
+                            let adt = adt_ty.ty_adt_def().unwrap();
+                            let downcast = self.tcx.mk_place_downcast(rplace, adt, *variant);
+                            self.tcx.mk_place_field(downcast, field, ty)
+                        } else {
+                            self.tcx.mk_place_field(rplace, field, ty)
+                        };
                         debug!(?rplace);
                         let rplace = self
                             .replacements
@@ -448,10 +534,32 @@ impl<'tcx, 'll> MutVisitor<'tcx> for ReplacementVisitor<'tcx, 'll> {
                     statement.make_nop();
                     return;
                 }
+                eprintln!(
+                    "no replacement for {statement:?} {:?}",
+                    self.replacements.place_fragments(lhs).map(|it| it.collect::<Vec<_>>())
+                );
             }
+            /*StatementKind::Assign(box (lhs, Rvalue::Discriminant(ref rhs)))
+                if let Some(local) = rhs.as_local() =>
+            {
+                let discr = self.replacements.variants.get(&local).unwrap();
+                let enum_ty = rhs.ty(self.local_decls, self.tcx).ty;
 
+                let discr_value = enum_ty.discriminant_for_variant(self.tcx, *discr).unwrap();
+                // Is this correct?
+                let span = statement.source_info.span;
+                // TODO: this is incorrect. `fully_monomorphized` should not be used in MIR opts.
+                let env = TypingEnv::fully_monomorphized();
+                let opr = ConstOperand{span,user_ty:None,const_:Const:: from_bits(self.tcx,discr_value.val, env, discr_value.ty)};
+                statement.kind = StatementKind::Assign(Box::new((
+                    lhs,
+                    Rvalue::Use(Operand::Constant(Box::new(opr))),
+                )));
+                return;
+            }*/
             _ => {}
         }
+        eprintln!("{statement:?}");
         self.super_statement(statement, location)
     }
 

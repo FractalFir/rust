@@ -839,7 +839,7 @@ impl<'a, 'tcx> Visitor<'tcx> for TypeChecker<'a, 'tcx> {
 
     fn visit_var_debug_info(&mut self, debuginfo: &VarDebugInfo<'tcx>) {
         if let Some(box VarDebugInfoFragment { ty, ref projection }) = debuginfo.composite {
-            if ty.is_union() || ty.is_enum() {
+            if ty.is_union() {
                 self.fail(
                     START_BLOCK.start_location(),
                     format!("invalid type {ty:?} in debuginfo for {:?}", debuginfo.name),
