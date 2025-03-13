@@ -10,3 +10,9 @@ pub unsafe fn unwrap_unchecked<T>(slf: Option<T>) -> T {
     // CHECK: (inlined #[track_caller] Option::<T>::unwrap_unchecked)
     slf.unwrap_unchecked()
 }
+pub fn unwrap_or_default<T: Default>(slf: Option<T>) -> T {
+    match slf {
+        Some(inner) => inner,
+        None => panic!(),
+    }
+}
