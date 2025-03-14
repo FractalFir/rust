@@ -274,7 +274,7 @@ trigger_files = [
 [autolabel."A-rustdoc-search"]
 trigger_files = [
     "src/librustdoc/html/static/js/search.js",
-    "tests/rustdoc-js",
+    "tests/rustdoc-js/",
     "tests/rustdoc-js-std",
 ]
 
@@ -958,6 +958,9 @@ If appropriate, please update `CONFIG_CHANGE_HISTORY` in `src/bootstrap/src/util
 [mentions."src/bootstrap/src/core/build_steps/llvm.rs"]
 message = "This PR changes how LLVM is built. Consider updating src/bootstrap/download-ci-llvm-stamp."
 
+[mentions."src/bootstrap/src/core/build_steps/gcc.rs"]
+message = "This PR changes how GCC is built. Consider updating src/bootstrap/download-ci-gcc-stamp."
+
 [mentions."tests/crashes"]
 message = "This PR changes a file inside `tests/crashes`. If a crash was fixed, please move into the corresponding `ui` subdir and add 'Fixes #<issueNr>' to the PR description to autoclose the issue upon merge."
 
@@ -1078,6 +1081,7 @@ warn_non_default_branch.enable = true
 contributing_url = "https://rustc-dev-guide.rust-lang.org/getting-started.html"
 users_on_vacation = [
     "jyn514",
+    "ChrisDenton",
 ]
 
 [[assign.warn_non_default_branch.exceptions]]
@@ -1112,7 +1116,6 @@ compiler = [
     "@wesleywiser",
 ]
 libs = [
-    "@cuviper",
     "@Mark-Simulacrum",
     "@Amanieu",
     "@Noratrieb",

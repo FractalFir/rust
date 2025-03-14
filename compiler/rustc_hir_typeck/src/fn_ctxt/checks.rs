@@ -99,22 +99,11 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         debug!("FnCtxt::check_asm: {} deferred checks", deferred_asm_checks.len());
         for (asm, hir_id) in deferred_asm_checks.drain(..) {
             let enclosing_id = self.tcx.hir_enclosing_body_owner(hir_id);
-            let expr_ty = |expr: &hir::Expr<'tcx>| {
-                let ty = self.typeck_results.borrow().expr_ty_adjusted(expr);
-                let ty = self.resolve_vars_if_possible(ty);
-                if ty.has_non_region_infer() {
-                    Ty::new_misc_error(self.tcx)
-                } else {
-                    self.tcx.erase_regions(ty)
-                }
-            };
-            let node_ty = |hir_id: HirId| self.typeck_results.borrow().node_type(hir_id);
             InlineAsmCtxt::new(
-                self.tcx,
                 enclosing_id,
+                &self.infcx,
                 self.typing_env(self.param_env),
-                expr_ty,
-                node_ty,
+                &*self.typeck_results.borrow(),
             )
             .check_asm(asm);
         }
@@ -1647,7 +1636,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             ast::LitKind::Char(_) => tcx.types.char,
             ast::LitKind::Int(_, ast::LitIntType::Signed(t)) => Ty::new_int(tcx, ty::int_ty(t)),
             ast::LitKind::Int(_, ast::LitIntType::Unsigned(t)) => Ty::new_uint(tcx, ty::uint_ty(t)),
-            ast::LitKind::Int(_, ast::LitIntType::Unsuffixed) => {
+            ast::LitKind::Int(i, ast::LitIntType::Unsuffixed) => {
                 let opt_ty = expected.to_option(self).and_then(|ty| match ty.kind() {
                     ty::Int(_) | ty::Uint(_) => Some(ty),
                     // These exist to direct casts like `0x61 as char` to use
@@ -1656,6 +1645,19 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                     ty::Char => Some(tcx.types.u8),
                     ty::RawPtr(..) => Some(tcx.types.usize),
                     ty::FnDef(..) | ty::FnPtr(..) => Some(tcx.types.usize),
+                    &ty::Pat(base, _) if base.is_integral() => {
+                        let layout = tcx
+                            .layout_of(self.typing_env(self.param_env).as_query_input(ty))
+                            .ok()?;
+                        assert!(!layout.uninhabited);
+
+                        match layout.backend_repr {
+                            rustc_abi::BackendRepr::Scalar(scalar) => {
+                                scalar.valid_range(&tcx).contains(u128::from(i.get())).then_some(ty)
+                            }
+                            _ => unreachable!(),
+                        }
+                    }
                     _ => None,
                 });
                 opt_ty.unwrap_or_else(|| self.next_int_var())

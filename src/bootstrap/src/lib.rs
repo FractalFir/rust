@@ -74,7 +74,7 @@ const LLD_FILE_NAMES: &[&str] = &["ld.lld", "ld64.lld", "lld-link", "wasm-ld"];
 
 /// Extra `--check-cfg` to add when building the compiler or tools
 /// (Mode restriction, config name, config values (if any))
-#[allow(clippy::type_complexity)] // It's fine for hard-coded list and type is explained above.
+#[expect(clippy::type_complexity)] // It's fine for hard-coded list and type is explained above.
 const EXTRA_CHECK_CFGS: &[(Option<Mode>, &str, Option<&[&'static str]>)] = &[
     (None, "bootstrap", None),
     (Some(Mode::Rustc), "llvm_enzyme", None),
@@ -253,7 +253,7 @@ pub enum Mode {
     /// Build a tool which uses the locally built rustc and the target std,
     /// placing the output in the "stageN-tools" directory. This is used for
     /// anything that needs a fully functional rustc, such as rustdoc, clippy,
-    /// cargo, rls, rustfmt, miri, etc.
+    /// cargo, rustfmt, miri, etc.
     ToolRustc,
 }
 

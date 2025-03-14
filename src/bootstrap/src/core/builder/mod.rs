@@ -895,7 +895,6 @@ impl<'a> Builder<'a> {
                 tool::RemoteTestClient,
                 tool::RustInstaller,
                 tool::Cargo,
-                tool::Rls,
                 tool::RustAnalyzer,
                 tool::RustAnalyzerProcMacroSrv,
                 tool::Rustdoc,
@@ -938,7 +937,6 @@ impl<'a> Builder<'a> {
                 clippy::OptDist,
                 clippy::RemoteTestClient,
                 clippy::RemoteTestServer,
-                clippy::Rls,
                 clippy::RustAnalyzer,
                 clippy::Rustdoc,
                 clippy::Rustfmt,
@@ -956,7 +954,6 @@ impl<'a> Builder<'a> {
                 check::Miri,
                 check::CargoMiri,
                 check::MiroptTestTools,
-                check::Rls,
                 check::Rustfmt,
                 check::RustAnalyzer,
                 check::TestFloatParse,
@@ -1071,7 +1068,6 @@ impl<'a> Builder<'a> {
                 dist::Analysis,
                 dist::Src,
                 dist::Cargo,
-                dist::Rls,
                 dist::RustAnalyzer,
                 dist::Rustfmt,
                 dist::Clippy,
@@ -1289,7 +1285,6 @@ impl<'a> Builder<'a> {
         host: TargetSelection,
         target: TargetSelection,
     ) -> Compiler {
-        #![allow(clippy::let_and_return)]
         let mut resolved_compiler = if self.build.force_use_stage2(stage) {
             trace!(target: "COMPILER_FOR", ?stage, "force_use_stage2");
             self.compiler(2, self.config.build)
