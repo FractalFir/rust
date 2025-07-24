@@ -1213,6 +1213,11 @@ impl<'a, 'gcc, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'gcc, 'tcx> {
     }
 
     fn uitofp(&mut self, value: RValue<'gcc>, dest_ty: Type<'gcc>) -> RValue<'gcc> {
+        assert!(
+            dest_ty.get_size() != 16,
+            "unsupported float width 128 requested in {:?}",
+            self.current_func
+        );
         set_rvalue_location(self, self.gcc_uint_to_float_cast(value, dest_ty))
     }
 

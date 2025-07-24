@@ -36,7 +36,7 @@
 //! Once stack has been unwound down to the handler frame level, unwinding stops
 //! and the last personality routine transfers control to the catch block.
 #![forbid(unsafe_op_in_unsafe_fn)]
-
+#![allow(unexpected_cfgs)]
 use unwind as uw;
 
 use super::dwarf::eh::{self, EHAction, EHContext};
@@ -53,7 +53,8 @@ const UNWIND_DATA_REG: (i32, i32) = (0, 2); // EAX, EDX
 
 #[cfg(target_arch = "x86_64")]
 const UNWIND_DATA_REG: (i32, i32) = (0, 1); // RAX, RDX
-
+#[cfg(target_arch = "alpha")]
+const UNWIND_DATA_REG: (i32, i32) = (0, 1); // RAX, RDX
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 const UNWIND_DATA_REG: (i32, i32) = (0, 1); // R0, R1 / X0, X1
 

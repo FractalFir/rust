@@ -469,11 +469,11 @@ impl<'a, 'gcc, 'tcx> IntrinsicCallBuilderMethods<'tcx> for Builder<'a, 'gcc, 'tc
             sym::black_box => {
                 args[0].val.store(self, result);
 
-                let block = self.llbb();
-                let extended_asm = block.add_extended_asm(None, "");
-                extended_asm.add_input_operand(None, "r", result.val.llval);
-                extended_asm.add_clobber("memory");
-                extended_asm.set_volatile_flag(true);
+                //let block = self.llbb();
+                //let extended_asm = block.add_extended_asm(None, "");
+                //extended_asm.add_input_operand(None, "r", result.val.llval);
+                //extended_asm.add_clobber("memory");
+                //extended_asm.set_volatile_flag(true);
 
                 // We have copied the value to `result` already.
                 return Ok(());

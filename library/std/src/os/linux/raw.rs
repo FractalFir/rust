@@ -8,7 +8,7 @@
             crates.io should be used instead for the correct \
             definitions"
 )]
-#![allow(deprecated)]
+#![allow(deprecated, unexpected_cfgs)]
 
 use crate::os::raw::c_ulong;
 
@@ -310,7 +310,7 @@ mod arch {
     }
 }
 
-#[cfg(any(target_arch = "x86_64", target_arch = "powerpc64"))]
+#[cfg(any(target_arch = "x86_64", target_arch = "powerpc64", target_arch = "alpha"))]
 mod arch {
     use crate::os::raw::{c_int, c_long};
 

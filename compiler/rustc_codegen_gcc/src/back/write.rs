@@ -41,7 +41,7 @@ pub(crate) fn codegen(
             &module.name,
             cgcx.invocation_temp.as_deref(),
         );
-
+        context.dump_to_file(&format!("/tmp/{}.c", &module.name), true);
         if config.bitcode_needed() {
             if fat_lto {
                 let _timer = cgcx

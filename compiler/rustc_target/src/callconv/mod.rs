@@ -715,6 +715,7 @@ impl<'a, Ty> FnAbi<'a, Ty> {
             }
             "wasm64" => wasm::compute_c_abi_info(cx, self),
             "bpf" => bpf::compute_abi_info(self),
+            "alpha" => loongarch::compute_abi_info(cx, self),
             arch => panic!("no lowering implemented for {arch}"),
         }
     }

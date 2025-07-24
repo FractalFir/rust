@@ -20,5 +20,5 @@ tracing = "0.1"
 # tidy-alphabetical-start
 default-features = false
 features = ["elf", "macho"]
-version = "0.36.2"
+git = "https://github.com/gimli-rs/object.git"
 # tidy-alphabetical-end

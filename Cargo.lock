@@ -162,7 +162,7 @@ version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "01667f6f40216b9a0b2945e05fed5f1ad0ab6470e69cb9378001e37b1c0668e4"
 dependencies = [
- "object",
+ "object 0.36.7",
 ]
 
 [[package]]
@@ -277,7 +277,7 @@ dependencies = [
  "cfg-if",
  "libc",
  "miniz_oxide",
- "object",
+ "object 0.36.7",
  "rustc-demangle",
  "windows-targets 0.52.6",
 ]
@@ -2551,7 +2551,18 @@ dependencies = [
  "indexmap",
  "memchr",
  "ruzstd",
- "wasmparser 0.222.1",
+]
+
+[[package]]
+name = "object"
+version = "0.37.1"
+source = "git+https://github.com/gimli-rs/object.git#f9d64bd3e779497b10b8343723866513c8af694a"
+dependencies = [
+ "crc32fast",
+ "hashbrown",
+ "indexmap",
+ "memchr",
+ "wasmparser 0.234.0",
 ]
 
 [[package]]
@@ -3151,7 +3162,7 @@ dependencies = [
  "build_helper",
  "gimli",
  "libc",
- "object",
+ "object 0.36.7",
  "regex",
  "serde_json",
  "similar",
@@ -3464,7 +3475,7 @@ dependencies = [
  "itertools",
  "libc",
  "measureme",
- "object",
+ "object 0.36.7",
  "rustc-demangle",
  "rustc_abi",
  "rustc_ast",
@@ -3505,7 +3516,7 @@ dependencies = [
  "either",
  "itertools",
  "libc",
- "object",
+ "object 0.37.1",
  "pathdiff",
  "regex",
  "rustc_abi",
@@ -4537,7 +4548,7 @@ name = "rustc_target"
 version = "0.0.0"
 dependencies = [
  "bitflags",
- "object",
+ "object 0.37.1",
  "rustc_abi",
  "rustc_data_structures",
  "rustc_fs_util",
@@ -5288,7 +5299,7 @@ checksum = "9e9c1e705f82a260173f3eec93f2ff6d7807f23ad5a8cc2e7316a891733ea7a1"
 dependencies = [
  "gimli",
  "hashbrown",
- "object",
+ "object 0.36.7",
  "tracing",
 ]
 
@@ -5951,15 +5962,6 @@ dependencies = [
 
 [[package]]
 name = "wasmparser"
-version = "0.222.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fa210fd1788e6b37a1d1930f3389c48e1d6ebd1a013d34fa4b7f9e3e3bf03146"
-dependencies = [
- "bitflags",
-]
-
-[[package]]
-name = "wasmparser"
 version = "0.229.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0cc3b1f053f5d41aa55640a1fa9b6d1b8a9e4418d118ce308d20e24ff3575a8c"
@@ -5980,6 +5982,15 @@ dependencies = [
  "bitflags",
  "indexmap",
  "semver",
+]
+
+[[package]]
+name = "wasmparser"
+version = "0.234.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "be22e5a8f600afce671dd53c8d2dd26b4b7aa810fd18ae27dfc49737f3e02fc5"
+dependencies = [
+ "bitflags",
 ]
 
 [[package]]

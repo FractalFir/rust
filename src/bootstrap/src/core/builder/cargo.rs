@@ -251,7 +251,7 @@ impl Cargo {
                 && !target.contains("aix")
                 && !target.contains("xous")
             {
-                self.rustflags.arg("-Clink-args=-Wl,-z,origin");
+                //self.rustflags.arg("-Clink-args=-Wl,-z,origin");
                 Some(format!("-Wl,-rpath,$ORIGIN/../{libdir}"))
             } else {
                 None

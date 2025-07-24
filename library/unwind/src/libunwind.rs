@@ -1,5 +1,5 @@
 #![allow(nonstandard_style)]
-
+#![allow(unexpected_cfgs)]
 use core::ffi::{c_int, c_void};
 
 #[repr(C)]
@@ -69,7 +69,7 @@ pub const unwinder_private_data_size: usize = 2;
 #[cfg(any(target_arch = "sparc", target_arch = "sparc64"))]
 pub const unwinder_private_data_size: usize = 2;
 
-#[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
+#[cfg(any(target_arch = "riscv64", target_arch = "riscv32", target_arch = "alpha"))]
 pub const unwinder_private_data_size: usize = 2;
 
 #[cfg(all(target_arch = "wasm32", target_os = "emscripten"))]

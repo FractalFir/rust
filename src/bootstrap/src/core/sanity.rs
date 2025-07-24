@@ -273,10 +273,12 @@ than building it.
                     target_filename.push(".json");
 
                     // Recursively traverse through nested directories.
-                    let walker = walkdir::WalkDir::new(custom_target_path).into_iter();
+                    let walker = walkdir::WalkDir::new(&custom_target_path).into_iter();
                     for entry in walker.filter_map(|e| e.ok()) {
                         has_target |= entry.file_name() == target_filename;
+                        eprintln!("{:?} {target_filename:?}",entry.file_name());
                     }
+                    eprintln!("custom_target_path:{:?}",&custom_target_path);
                 }
             }
 

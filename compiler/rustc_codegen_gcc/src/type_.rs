@@ -153,7 +153,7 @@ impl<'gcc, 'tcx> BaseTypeCodegenMethods for CodegenCx<'gcc, 'tcx> {
         if self.supports_f16_type {
             return self.context.new_c_type(CType::Float16);
         }
-        bug!("unsupported float width 16")
+        self.float_type
     }
 
     fn type_f32(&self) -> Type<'gcc> {
@@ -174,10 +174,11 @@ impl<'gcc, 'tcx> BaseTypeCodegenMethods for CodegenCx<'gcc, 'tcx> {
 
     fn type_f128(&self) -> Type<'gcc> {
         #[cfg(feature = "master")]
-        if self.supports_f128_type {
+        if self.supports_f128_type || true {
             return self.context.new_c_type(CType::Float128);
         }
-        bug!("unsupported float width 128")
+        eprintln!("unsupported float width 128 requested in {:?}", self.current_func);
+        self.double_type
     }
 
     fn type_func(&self, params: &[Type<'gcc>], return_type: Type<'gcc>) -> Type<'gcc> {

@@ -196,7 +196,7 @@ impl CodegenBackend for GccCodegenBackend {
             // Get the second TargetInfo with the correct CPU features by setting the arch.
             let context = Context::default();
             if target_cpu != "generic" {
-                context.add_command_line_option(format!("-march={}", target_cpu));
+                //context.add_command_line_option(format!("-march={}", target_cpu));
             }
 
             **self.target_info.info.lock().expect("lock") = context.get_target_info();
@@ -525,9 +525,9 @@ fn target_config(sess: &Session, target_info: &LockedTargetInfo) -> TargetConfig
         target_features,
         unstable_target_features,
         // There are no known bugs with GCC support for f16 or f128
-        has_reliable_f16: true,
-        has_reliable_f16_math: true,
-        has_reliable_f128: true,
-        has_reliable_f128_math: true,
+        has_reliable_f16: false,
+        has_reliable_f16_math: false,
+        has_reliable_f128: false,
+        has_reliable_f128_math: false,
     }
 }

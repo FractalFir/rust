@@ -1,5 +1,5 @@
 #![forbid(unsafe_op_in_unsafe_fn)]
-
+#![allow(unexpected_cfgs)]
 use crate::alloc::{GlobalAlloc, Layout, System};
 use crate::ptr;
 
@@ -39,6 +39,7 @@ const MIN_ALIGN: usize = if cfg!(any(
     target_arch = "sparc64",
     target_arch = "riscv64",
     target_arch = "wasm64",
+    target_arch = "alpha",
 )) {
     16
 } else {

@@ -3556,6 +3556,7 @@ impl Target {
         use object::Architecture;
         Some(match self.arch.as_ref() {
             "arm" => (Architecture::Arm, None),
+            "alpha" => (Architecture::Alpha, None),
             "aarch64" => (
                 if self.pointer_width == 32 {
                     Architecture::Aarch64_Ilp32
