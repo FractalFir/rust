@@ -33,6 +33,11 @@ pub type TermKind<'tcx> = rustc_type_ir::TermKind<TyCtxt<'tcx>>;
 /// Note: the `PartialEq`, `Eq` and `Hash` derives are only valid because `Ty`,
 /// `Region` and `Const` are all interned.
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
+// The compiler relies on `GenericArg` being aligned to at least 4 bytes to encode the tag.
+// On most platforms, pointers are aligned to 4+ bytes, so this is fine.
+// However, on platforms where that is *not* the case(eg. m68k, where pointers are aligned to 2 bytes),
+// we need to ensure the alignment is at least 4 bytes. This repr has no effect on any other platform
+#[repr(align(4))]
 pub struct GenericArg<'tcx> {
     ptr: NonNull<()>,
     marker: PhantomData<(Ty<'tcx>, ty::Region<'tcx>, ty::Const<'tcx>)>,
