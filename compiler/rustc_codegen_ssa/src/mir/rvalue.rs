@@ -1034,7 +1034,7 @@ pub(super) fn transmute_scalar<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
     imm = bx.from_immediate(imm);
 
     let from_backend_ty = bx.cx().type_from_scalar(from_scalar);
-    debug_assert_eq!(bx.cx().val_ty(imm), from_backend_ty);
+
     let to_backend_ty = bx.cx().type_from_scalar(to_scalar);
 
     // If we have a scalar, we must already know its range. Either
@@ -1066,8 +1066,6 @@ pub(super) fn transmute_scalar<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
             bx.bitcast(int_imm, to_backend_ty)
         }
     };
-
-    debug_assert_eq!(bx.cx().val_ty(imm), to_backend_ty);
 
     // This `assume` remains important for cases like (a conceptual)
     //    transmute::<u32, NonZeroU32>(x) == 0

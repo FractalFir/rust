@@ -355,7 +355,19 @@ impl<'a, 'gcc, 'tcx> AsmBuilderMethods<'tcx> for Builder<'a, 'gcc, 'tcx> {
                         let ty = value.layout.gcc_type(self.cx);
                         let reg_var = self.current_func().new_local(None, ty, "input_register");
                         reg_var.set_register_name(reg_name);
-                        self.llbb().add_assignment(None, reg_var, value.immediate());
+                        let val = value.immediate();
+                        let val_ty = val.get_type();
+                        let reg_type = reg_var.to_rvalue().get_type();
+                        if val_ty.is_compatible_with(reg_type) {
+                            self.llbb().add_assignment(None, reg_var, val);
+                        } else if val_ty.get_pointee().is_some() && reg_type.get_pointee().is_some()
+                        {
+                            self.llbb().add_assignment(None, reg_var, self.bitcast(val, reg_type));
+                        } else {
+                            panic!(
+                                "Incompatible types in assembly. val_ty:{val_ty:?} reg_type:{reg_type:?}"
+                            )
+                        }
 
                         inputs.push(AsmInOperand {
                             constraint: "r".into(),
